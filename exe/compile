@@ -1,0 +1,16 @@
+optimization="3"
+target_dir=exe/compiled
+compiler=gcc
+
+warnings="-Wall -Wextra -Wfatal-errors"
+cflags_base="-std=c17 -D_POSIX_C_SOURCE=200809L -D_FILE_OFFSET_BITS=64 $warnings -fno-common -fno-math-errno -O$optimization -g -pthread"
+
+pkg_cflags="$(pkg-config --cflags gtk4)"
+pkg_libs="$(pkg-config --libs gtk4)"
+
+src="ratpad.c"
+out="$target_dir/ratpad"
+
+mkdir -p "$target_dir"
+
+$compiler $cflags_base $pkg_cflags "$src" -o "$out" $pkg_libs
