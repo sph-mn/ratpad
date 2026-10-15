@@ -323,14 +323,29 @@ void ratpad_on_open_ready(GObject* source, GAsyncResult* result, gpointer user_d
 void ratpad_open_request(GtkWindow* window, struct ratpad_application* application)
 {
   struct ratpad_open_context* context;
+  struct ratpad_window* window_state;
+  struct ratpad_document* document;
   GtkFileDialog* dialog;
+  GtkWidget* page;
+  GFile* parent;
 
   context = g_new0(struct ratpad_open_context, 1);
   context->window = g_object_ref(window);
   context->application = application;
+  window_state = g_object_get_data(G_OBJECT(window), ratpad_window_data);
+  page = gtk_notebook_get_nth_page(
+    window_state->notebook,
+    gtk_notebook_get_current_page(window_state->notebook)
+  );
+  document = g_object_get_data(G_OBJECT(page), ratpad_document_data);
   dialog = gtk_file_dialog_new();
   gtk_file_dialog_set_title(dialog, "Open file");
   gtk_file_dialog_set_modal(dialog, TRUE);
+  if (document->file && g_file_is_native(document->file)) {
+    parent = g_file_get_parent(document->file);
+    gtk_file_dialog_set_initial_folder(dialog, parent);
+    g_object_unref(parent);
+  }
   gtk_file_dialog_open(dialog, window, 0, ratpad_on_open_ready, context);
   g_object_unref(dialog);
 }
