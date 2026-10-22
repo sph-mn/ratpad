@@ -118,6 +118,31 @@ void ratpad_on_modified_changed(GtkTextBuffer* buffer, gpointer user_data)
   }
 }
 
+void ratpad_on_apply_tag(GtkTextBuffer* buffer, GtkTextTag* unused_tag, GtkTextIter* unused_start, GtkTextIter* unused_end, gpointer unused_data)
+{
+  (void)unused_tag;
+  (void)unused_start;
+  (void)unused_end;
+  (void)unused_data;
+  g_signal_stop_emission_by_name(buffer, "apply-tag");
+}
+
+void ratpad_on_insert_paintable(GtkTextBuffer* buffer, GtkTextIter* unused_location, GdkPaintable* unused_paintable, gpointer unused_data)
+{
+  (void)unused_location;
+  (void)unused_paintable;
+  (void)unused_data;
+  g_signal_stop_emission_by_name(buffer, "insert-paintable");
+}
+
+void ratpad_on_insert_child_anchor(GtkTextBuffer* buffer, GtkTextIter* unused_location, GtkTextChildAnchor* unused_anchor, gpointer unused_data)
+{
+  (void)unused_location;
+  (void)unused_anchor;
+  (void)unused_data;
+  g_signal_stop_emission_by_name(buffer, "insert-child-anchor");
+}
+
 void ratpad_document_load(struct ratpad_document* document, GFile* file)
 {
   GFile* referenced_file;
@@ -192,6 +217,9 @@ struct ratpad_document* ratpad_document_create(GtkNotebook* notebook, struct rat
   view = gtk_text_view_new();
   document->view = GTK_TEXT_VIEW(view);
   document->buffer = gtk_text_view_get_buffer(document->view);
+  g_signal_connect(document->buffer, "apply-tag", G_CALLBACK(ratpad_on_apply_tag), 0);
+  g_signal_connect(document->buffer, "insert-paintable", G_CALLBACK(ratpad_on_insert_paintable), 0);
+  g_signal_connect(document->buffer, "insert-child-anchor", G_CALLBACK(ratpad_on_insert_child_anchor), 0);
   document->title = gtk_label_new("new");
   document->modified_indicator = gtk_label_new("●");
   gtk_widget_set_visible(document->modified_indicator, FALSE);
@@ -421,11 +449,13 @@ void ratpad_on_find_close(GtkButton* unused_button, gpointer user_data)
 void ratpad_on_page_added(GtkNotebook* notebook, GtkWidget* child, guint unused_page_number, gpointer unused_data)
 {
   struct ratpad_document* document;
+  GtkNotebook* previous_notebook;
   GtkNotebookPage* page;
 
   (void)unused_page_number;
   (void)unused_data;
   document = g_object_get_data(G_OBJECT(child), ratpad_document_data);
+  previous_notebook = document->notebook;
   document->notebook = notebook;
   page = gtk_notebook_get_page(notebook, child);
   g_object_set(page, "tab-expand", TRUE, (void*)0);
@@ -433,23 +463,19 @@ void ratpad_on_page_added(GtkNotebook* notebook, GtkWidget* child, guint unused_
   gtk_notebook_set_tab_detachable(notebook, child, TRUE);
   gtk_notebook_set_show_tabs(notebook, gtk_notebook_get_n_pages(notebook) > 1);
   ratpad_notebook_title_update(notebook);
+  if (previous_notebook != notebook && !gtk_notebook_get_n_pages(previous_notebook)) {
+    gtk_window_destroy(GTK_WINDOW(gtk_widget_get_root(GTK_WIDGET(previous_notebook))));
+  }
 }
 
 void ratpad_on_page_removed(GtkNotebook* notebook, GtkWidget* unused_child, guint unused_page_number, gpointer unused_data)
 {
-  GtkRoot* root;
-
   (void)unused_child;
   (void)unused_page_number;
   (void)unused_data;
   if (gtk_notebook_get_n_pages(notebook)) {
     gtk_notebook_set_show_tabs(notebook, gtk_notebook_get_n_pages(notebook) > 1);
     ratpad_notebook_title_update(notebook);
-    return;
-  }
-  root = gtk_widget_get_root(GTK_WIDGET(notebook));
-  if (root) {
-    gtk_window_destroy(GTK_WINDOW(root));
   }
 }
 
@@ -546,7 +572,11 @@ gboolean ratpad_on_key_pressed(
     return TRUE;
   }
   if (modifiers == GDK_CONTROL_MASK && keyval == GDK_KEY_w) {
-    gtk_notebook_remove_page(notebook, gtk_notebook_get_current_page(notebook));
+    if (gtk_notebook_get_n_pages(notebook) > 1) {
+      gtk_notebook_remove_page(notebook, gtk_notebook_get_current_page(notebook));
+    } else {
+      gtk_window_destroy(window);
+    }
     return TRUE;
   }
   if (!modifiers && keyval == GDK_KEY_Tab) {
