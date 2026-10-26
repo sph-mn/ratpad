@@ -143,6 +143,39 @@ void ratpad_on_insert_child_anchor(GtkTextBuffer* buffer, GtkTextIter* unused_lo
   g_signal_stop_emission_by_name(buffer, "insert-child-anchor");
 }
 
+gboolean ratpad_clipboard_copy(GtkTextView* view)
+{
+  GtkTextBuffer* buffer;
+  GtkTextIter start_iter;
+  GtkTextIter end_iter;
+  char* text;
+
+  buffer = gtk_text_view_get_buffer(view);
+  if (gtk_text_buffer_get_selection_bounds(buffer, &start_iter, &end_iter)) {
+    text = gtk_text_buffer_get_text(buffer, &start_iter, &end_iter, TRUE);
+    gdk_clipboard_set_text(gtk_widget_get_clipboard(GTK_WIDGET(view)), text);
+    g_free(text);
+    return TRUE;
+  }
+  return FALSE;
+}
+
+void ratpad_on_copy_clipboard(GtkTextView* view, gpointer unused_data)
+{
+  (void)unused_data;
+  g_signal_stop_emission_by_name(view, "copy-clipboard");
+  ratpad_clipboard_copy(view);
+}
+
+void ratpad_on_cut_clipboard(GtkTextView* view, gpointer unused_data)
+{
+  (void)unused_data;
+  g_signal_stop_emission_by_name(view, "cut-clipboard");
+  if (ratpad_clipboard_copy(view)) {
+    gtk_text_buffer_delete_selection(gtk_text_view_get_buffer(view), TRUE, gtk_text_view_get_editable(view));
+  }
+}
+
 void ratpad_document_load(struct ratpad_document* document, GFile* file)
 {
   GFile* referenced_file;
@@ -217,6 +250,8 @@ struct ratpad_document* ratpad_document_create(GtkNotebook* notebook, struct rat
   view = gtk_text_view_new();
   document->view = GTK_TEXT_VIEW(view);
   document->buffer = gtk_text_view_get_buffer(document->view);
+  g_signal_connect(document->view, "copy-clipboard", G_CALLBACK(ratpad_on_copy_clipboard), 0);
+  g_signal_connect(document->view, "cut-clipboard", G_CALLBACK(ratpad_on_cut_clipboard), 0);
   g_signal_connect(document->buffer, "apply-tag", G_CALLBACK(ratpad_on_apply_tag), 0);
   g_signal_connect(document->buffer, "insert-paintable", G_CALLBACK(ratpad_on_insert_paintable), 0);
   g_signal_connect(document->buffer, "insert-child-anchor", G_CALLBACK(ratpad_on_insert_child_anchor), 0);
