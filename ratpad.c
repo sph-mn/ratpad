@@ -91,20 +91,154 @@ void ratpad_notebook_title_update(GtkNotebook* notebook)
   g_free(title);
 }
 
+int ratpad_file_title_prefix_depth(GFile* first_file, GFile* second_file)
+{
+  GFile* first_directory;
+  GFile* second_directory;
+  GFile* first_parent;
+  GFile* second_parent;
+  char* first_name;
+  char* second_name;
+  int depth;
+  gboolean names_match;
+
+  first_directory = g_file_get_parent(first_file);
+  second_directory = g_file_get_parent(second_file);
+  depth = 0;
+  while (first_directory && second_directory) {
+    first_name = g_file_get_basename(first_directory);
+    second_name = g_file_get_basename(second_directory);
+    names_match = g_strcmp0(first_name, second_name) == 0;
+    g_free(first_name);
+    g_free(second_name);
+    depth = depth + 1;
+    if (!names_match) {
+      break;
+    }
+    first_parent = g_file_get_parent(first_directory);
+    second_parent = g_file_get_parent(second_directory);
+    g_object_unref(first_directory);
+    g_object_unref(second_directory);
+    first_directory = first_parent;
+    second_directory = second_parent;
+  }
+  g_clear_object(&first_directory);
+  g_clear_object(&second_directory);
+  return depth;
+}
+
+char* ratpad_document_title_text(struct ratpad_document* document, GtkApplication* application)
+{
+  GList* windows;
+  GList* window_link;
+  struct ratpad_window* window_state;
+  struct ratpad_document* other_document;
+  GtkWindow* window;
+  GtkWidget* page;
+  GtkNotebook* notebook;
+  GFile* directory;
+  GFile* parent;
+  GString* title_text;
+  char* basename;
+  char* other_basename;
+  char* directory_name;
+  int prefix_depth;
+  int other_prefix_depth;
+  int page_number;
+  int depth;
+
+  if (!document->file) {
+    return g_strdup("new");
+  }
+  basename = g_file_get_basename(document->file);
+  prefix_depth = 0;
+  windows = gtk_application_get_windows(application);
+  for (window_link = windows; window_link; window_link = window_link->next) {
+    window = window_link->data;
+    window_state = g_object_get_data(G_OBJECT(window), ratpad_window_data);
+    notebook = window_state->notebook;
+    page_number = 0;
+    while (page_number < gtk_notebook_get_n_pages(notebook)) {
+      page = gtk_notebook_get_nth_page(notebook, page_number);
+      other_document = g_object_get_data(G_OBJECT(page), ratpad_document_data);
+      if (other_document != document && other_document->file) {
+        other_basename = g_file_get_basename(other_document->file);
+        if (g_str_equal(basename, other_basename)) {
+          other_prefix_depth = ratpad_file_title_prefix_depth(document->file, other_document->file);
+          prefix_depth = MAX(prefix_depth, other_prefix_depth);
+        }
+        g_free(other_basename);
+      }
+      page_number = page_number + 1;
+    }
+  }
+
+  title_text = g_string_new(basename);
+  g_free(basename);
+  directory = g_file_get_parent(document->file);
+  depth = 0;
+  while (directory && depth < prefix_depth) {
+    directory_name = g_file_get_basename(directory);
+    if (!directory_name) {
+      if (title_text->str[0] != G_DIR_SEPARATOR) {
+        g_string_prepend(title_text, G_DIR_SEPARATOR_S);
+      }
+    } else {
+      g_string_prepend(title_text, G_DIR_SEPARATOR_S);
+      g_string_prepend(title_text, directory_name);
+    }
+    g_free(directory_name);
+    parent = g_file_get_parent(directory);
+    g_object_unref(directory);
+    directory = parent;
+    depth = depth + 1;
+  }
+  g_clear_object(&directory);
+  return g_string_free(title_text, FALSE);
+}
+
+void ratpad_application_titles_update(GtkApplication* application)
+{
+  GList* windows;
+  GList* window_link;
+  struct ratpad_window* window_state;
+  struct ratpad_document* document;
+  GtkWindow* window;
+  GtkWidget* page;
+  GtkNotebook* notebook;
+  char* title_text;
+  int page_number;
+
+  windows = gtk_application_get_windows(application);
+  for (window_link = windows; window_link; window_link = window_link->next) {
+    window = window_link->data;
+    window_state = g_object_get_data(G_OBJECT(window), ratpad_window_data);
+    notebook = window_state->notebook;
+    page_number = 0;
+    while (page_number < gtk_notebook_get_n_pages(notebook)) {
+      page = gtk_notebook_get_nth_page(notebook, page_number);
+      document = g_object_get_data(G_OBJECT(page), ratpad_document_data);
+      title_text = ratpad_document_title_text(document, application);
+      gtk_label_set_text(GTK_LABEL(document->title), title_text);
+      g_free(title_text);
+      page_number = page_number + 1;
+    }
+  }
+  for (window_link = windows; window_link; window_link = window_link->next) {
+    window = window_link->data;
+    window_state = g_object_get_data(G_OBJECT(window), ratpad_window_data);
+    if (gtk_notebook_get_n_pages(window_state->notebook)) {
+      ratpad_notebook_title_update(window_state->notebook);
+    }
+  }
+}
+
 void ratpad_document_title_update(struct ratpad_document* document)
 {
-  char* basename;
+  GtkWindow* window;
 
-  if (document->file) {
-    basename = g_file_get_basename(document->file);
-    gtk_label_set_text(GTK_LABEL(document->title), basename);
-    g_free(basename);
-  } else {
-    gtk_label_set_text(GTK_LABEL(document->title), "new");
-  }
-  if (gtk_notebook_get_nth_page(document->notebook, gtk_notebook_get_current_page(document->notebook)) == document->page) {
-    ratpad_notebook_title_update(document->notebook);
-  }
+  window = GTK_WINDOW(gtk_widget_get_root(GTK_WIDGET(document->notebook)));
+  ratpad_application_titles_update(gtk_window_get_application(window));
 }
 
 void ratpad_on_modified_changed(GtkTextBuffer* buffer, gpointer user_data)
@@ -259,6 +393,7 @@ struct ratpad_document* ratpad_document_create(GtkNotebook* notebook, struct rat
   document->modified_indicator = gtk_label_new("●");
   gtk_widget_set_visible(document->modified_indicator, FALSE);
   gtk_text_view_set_accepts_tab(document->view, FALSE);
+  gtk_text_view_set_wrap_mode(document->view, GTK_WRAP_WORD_CHAR);
   gtk_text_buffer_set_enable_undo(document->buffer, TRUE);
   gtk_widget_add_css_class(view, "ratpad-view");
   gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(document->page), view);
@@ -481,14 +616,15 @@ void ratpad_on_find_close(GtkButton* unused_button, gpointer user_data)
   ratpad_find_hide(user_data);
 }
 
-void ratpad_on_page_added(GtkNotebook* notebook, GtkWidget* child, guint unused_page_number, gpointer unused_data)
+void ratpad_on_page_added(GtkNotebook* notebook, GtkWidget* child, guint unused_page_number, gpointer user_data)
 {
+  GtkApplication* application;
   struct ratpad_document* document;
   GtkNotebook* previous_notebook;
   GtkNotebookPage* page;
 
   (void)unused_page_number;
-  (void)unused_data;
+  application = user_data;
   document = g_object_get_data(G_OBJECT(child), ratpad_document_data);
   previous_notebook = document->notebook;
   document->notebook = notebook;
@@ -497,20 +633,22 @@ void ratpad_on_page_added(GtkNotebook* notebook, GtkWidget* child, guint unused_
   gtk_notebook_set_tab_reorderable(notebook, child, TRUE);
   gtk_notebook_set_tab_detachable(notebook, child, TRUE);
   gtk_notebook_set_show_tabs(notebook, gtk_notebook_get_n_pages(notebook) > 1);
-  ratpad_notebook_title_update(notebook);
+  ratpad_application_titles_update(application);
   if (previous_notebook != notebook && !gtk_notebook_get_n_pages(previous_notebook)) {
     gtk_window_destroy(GTK_WINDOW(gtk_widget_get_root(GTK_WIDGET(previous_notebook))));
   }
 }
 
-void ratpad_on_page_removed(GtkNotebook* notebook, GtkWidget* unused_child, guint unused_page_number, gpointer unused_data)
+void ratpad_on_page_removed(GtkNotebook* notebook, GtkWidget* unused_child, guint unused_page_number, gpointer user_data)
 {
+  GtkApplication* application;
+
   (void)unused_child;
   (void)unused_page_number;
-  (void)unused_data;
+  application = user_data;
+  ratpad_application_titles_update(application);
   if (gtk_notebook_get_n_pages(notebook)) {
     gtk_notebook_set_show_tabs(notebook, gtk_notebook_get_n_pages(notebook) > 1);
-    ratpad_notebook_title_update(notebook);
   }
 }
 
@@ -681,8 +819,8 @@ GtkWindow* ratpad_window_create(struct ratpad_application* application)
   g_signal_connect(key_controller, "key-pressed", G_CALLBACK(ratpad_on_key_pressed), application);
   gtk_widget_add_controller(window, key_controller);
 
-  g_signal_connect(notebook, "page-added", G_CALLBACK(ratpad_on_page_added), 0);
-  g_signal_connect(notebook, "page-removed", G_CALLBACK(ratpad_on_page_removed), 0);
+  g_signal_connect(notebook, "page-added", G_CALLBACK(ratpad_on_page_added), application->application);
+  g_signal_connect(notebook, "page-removed", G_CALLBACK(ratpad_on_page_removed), application->application);
   g_signal_connect(notebook, "switch-page", G_CALLBACK(ratpad_on_switch_page), 0);
   g_signal_connect(notebook, "create-window", G_CALLBACK(ratpad_on_create_window), application);
   gtk_window_present(GTK_WINDOW(window));
@@ -734,6 +872,13 @@ void ratpad_on_application_open(GApplication* unused_gtk_application, GFile** fi
   gtk_window_present(window);
 }
 
+void ratpad_on_window_removed(GtkApplication* application, GtkWindow* unused_window, gpointer unused_data)
+{
+  (void)unused_window;
+  (void)unused_data;
+  ratpad_application_titles_update(application);
+}
+
 void ratpad_on_application_startup(GApplication* unused_application, gpointer user_data)
 {
   struct ratpad_application* application;
@@ -741,6 +886,7 @@ void ratpad_on_application_startup(GApplication* unused_application, gpointer us
 
   (void)unused_application;
   application = user_data;
+  g_signal_connect(application->application, "window-removed", G_CALLBACK(ratpad_on_window_removed), 0);
   application->style_provider = gtk_css_provider_new();
   g_object_set(gtk_settings_get_default(), "gtk-interface-color-scheme", GTK_INTERFACE_COLOR_SCHEME_DARK, (void*)0);
   ratpad_style_update(application);
