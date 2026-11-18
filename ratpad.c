@@ -313,11 +313,21 @@ void ratpad_on_cut_clipboard(GtkTextView* view, gpointer unused_data)
 void ratpad_document_load(struct ratpad_document* document, GFile* file)
 {
   GFile* referenced_file;
+  GError* error;
   char* text;
 
-  referenced_file = g_object_ref(file);
   text = 0;
-  g_file_load_contents(file, 0, &text, 0, 0, 0);
+  error = 0;
+  if (!g_file_load_contents(file, 0, &text, 0, 0, &error)) {
+    if (g_error_matches(error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND)) {
+      text = g_strdup("");
+    } else {
+      g_clear_error(&error);
+      return;
+    }
+  }
+  g_clear_error(&error);
+  referenced_file = g_object_ref(file);
   gtk_text_buffer_set_text(document->buffer, text, ratpad_text_length_auto);
   g_clear_object(&document->file);
   document->file = referenced_file;

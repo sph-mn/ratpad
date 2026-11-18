@@ -3,12 +3,11 @@ a super minimal gtk text editor inspired by mousepad.
 
 ![](ratpad.png)
 
-gtk and minimal are two words that do not go easily together. however, gtks text editing widgets provide many behaviors familiar from other gtk applications by default, which makes working with them more seamless than alternative implementations or terminal editors. this includes clipboard paste without terminal interpretation problems, text zooming, and seamless input-method support.
+gtk and minimal are two words that do not necessarily fit together. however, gtks text editing widgets provide many behaviors familiar from other gtk applications by default, which makes working with them more seamless than alternative implementations or terminal editors. this includes clipboard paste without terminal interpretation problems, text zooming, and seamless input-method support.
 
 ratpad is deliberately restricted to a specific use case: quick plain-text editing. some properties can be configured at compile time, but the default configuration supports only utf-8 and lf line endings. it is not intended for handling legacy text formats or providing code-writing assistance.
 
 the editor also does not ask for confirmation before closing a document with unsaved changes. it follows the users demand directly. this deliberately removes friction from workflows where documents are frequently opened, changed, discarded, or replaced.
-
 # features
 * compile-time configuration.
 * plain-text editing.
@@ -48,8 +47,7 @@ the editor also does not ask for confirmation before closing a document with uns
 * gtk 4
 
 # installation
-~~~
+```
 ./exe/compile
-~~~
-
+```
 creates exe/compiled/ratpad, which can be linked or copied into a directory listed in $PATH, for example to "cp exe/compiled/ratpad /usr/bin".
